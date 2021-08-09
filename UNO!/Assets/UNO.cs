@@ -26,6 +26,8 @@ public class UNO : MonoBehaviour {
    public KMSelectable BigIfSquare;
    public Sprite Bill;
 
+   public GameObject[] CardsMove;
+
    List<string> InitialCardDistribution = new List<string> { "R0", "R1", "R1", "R2", "R2", "R3", "R3", "R4", "R4", "R5", "R5", "R6", "R6", "R7", "R7", "R8", "R8", "R9", "R9", "R+2", "R+2", "RS", "RS", "RR", "RR", "G0", "G1", "G1", "G2", "G2", "G3", "G3", "G4", "G4", "G5", "G5", "G6", "G6", "G7", "G7", "G8", "G8", "G9", "G9", "G+2", "G+2", "GS", "GS", "GR", "GR", "Y0", "Y1", "Y1", "Y2", "Y2", "Y3", "Y3", "Y4", "Y4", "Y5", "Y5", "Y6", "Y6", "Y7", "Y7", "Y8", "Y8", "Y9", "Y9", "Y+2", "Y+2", "YS", "YS", "YR", "YR", "B0", "B1", "B1", "B2", "B2", "B3", "B3", "B4", "B4", "B5", "B5", "B6", "B6", "B7", "B7", "B8", "B8", "B9", "B9", "B+2", "B+2", "BS", "BS", "BR", "BR", "K*4", "K*4", "K*4", "K*4", "KW", "KW", "KW", "KW" };
    //Top is used for a reset.
    List<string> CardDistribution = new List<string> { "R0", "R1", "R1", "R2", "R2", "R3", "R3", "R4", "R4", "R5", "R5", "R6", "R6", "R7", "R7", "R8", "R8", "R9", "R9", "R+2", "R+2", "RS", "RS", "RR", "RR", "G0", "G1", "G1", "G2", "G2", "G3", "G3", "G4", "G4", "G5", "G5", "G6", "G6", "G7", "G7", "G8", "G8", "G9", "G9", "G+2", "G+2", "GS", "GS", "GR", "GR", "Y0", "Y1", "Y1", "Y2", "Y2", "Y3", "Y3", "Y4", "Y4", "Y5", "Y5", "Y6", "Y6", "Y7", "Y7", "Y8", "Y8", "Y9", "Y9", "Y+2", "Y+2", "YS", "YS", "YR", "YR", "B0", "B1", "B1", "B2", "B2", "B3", "B3", "B4", "B4", "B5", "B5", "B6", "B6", "B7", "B7", "B8", "B8", "B9", "B9", "B+2", "B+2", "BS", "BS", "BR", "BR", "K*4", "K*4", "K*4", "K*4", "KW", "KW", "KW", "KW" };
@@ -60,6 +62,14 @@ public class UNO : MonoBehaviour {
    string whatYouPlayedLast = "";
    string aaaaaaaaaaaaaaaaaaaa;
 
+   AnimationState[] CurrentState = new AnimationState[7];
+
+   enum AnimationState {
+      Down,
+      Transitioning,
+      Up
+   }
+
    static int moduleIdCounter = 1;
    int moduleId;
    private bool moduleSolved;
@@ -70,7 +80,7 @@ public class UNO : MonoBehaviour {
       foreach (KMSelectable Button in Buttons) {
          Button.OnInteract += delegate () { CardFlip(Button); return false; };
          Button.OnHighlight += delegate () { CardHover(Button); };
-         //Button.OnHighlightEnded += delegate () { CardDehover(Button); };
+         Button.OnHighlightEnded += delegate () { CardDehover(Button); };
       }
       BigIfSquare.OnInteract += delegate () { CommitSquare(); return false; };
 
@@ -80,12 +90,18 @@ public class UNO : MonoBehaviour {
    void CardFlip (KMSelectable Button) {
       for (int c = 0; c < 7; c++) {
          if (Button == Buttons[c]) {
-            Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
+            if (cardsSubmitted == 5) {
+               Audio.PlaySoundAtTransform("UNO", BigIfSquare.transform);
+            }
+            else {
+               Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
+            }
             //Debug.Log("L");
             hmmm = WasThisCardValid(c, cardsSubmitted);
             if (hmmm) {
                //do the cool shit later
                cardsSubmitted += 1;
+               
                whatYouPlayedLast = Deck[c];
                Sprites[c+1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
                Sprites[0].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
@@ -109,9 +125,58 @@ public class UNO : MonoBehaviour {
       }
    }
 
+   void CommitSquare () {
+      if (hasUnoed) {
+         GetComponent<KMBombModule>().HandleStrike();
+         Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
+         return;
+      }
+      if (cardsSubmitted == 5) {
+         Debug.LogFormat("[UNO! #{0}] UNO! pressed.", moduleId);
+         hasUnoed = true;
+      }
+   }
+
    void CardHover (KMSelectable Button) {
-      Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
+      for (int i = 0; i < 7; i++) {
+         if (Button == Buttons[i]) {
+            Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
+            if (CurrentState[i] != AnimationState.Transitioning) {
+               StartCoroutine(CardRaise(i));
+            }
+         }
+      }
+      //Button.transform
       //Debug.Log("K");
+   }
+
+   void CardDehover (KMSelectable Button) {
+      for (int i = 0; i < 7; i++) {
+         if (Button == Buttons[i]) {
+            //Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
+            if (CurrentState[i] != AnimationState.Transitioning) {
+               StartCoroutine(CardLower(i));
+            }
+         }
+      }
+   }
+
+   IEnumerator CardRaise (int j) {
+      CurrentState[j] = AnimationState.Transitioning;
+      for (int i = 0; i < 20; i++) {
+         CardsMove[j].transform.localPosition += new Vector3(0, 0, .001f);
+         yield return new WaitForSeconds(.01f);
+      }
+      CurrentState[j] = AnimationState.Up;
+   }
+
+   IEnumerator CardLower (int j) {
+      CurrentState[j] = AnimationState.Transitioning;
+      for (int i = 0; i < 20; i++) {
+         CardsMove[j].transform.localPosition += new Vector3(0, 0, -.001f);
+         yield return new WaitForSeconds(.01f);
+      }
+      CurrentState[j] = AnimationState.Down;
    }
 
    void Activate () {
@@ -318,17 +383,6 @@ public class UNO : MonoBehaviour {
          } else {
             return previousCard[0] == currentCard[0];
          }
-      }
-   }
-
-   void CommitSquare () {
-      if (hasUnoed) {
-         return;
-      }
-      if (cardsSubmitted == 5) {
-         Debug.LogFormat("[UNO! #{0}] UNO! pressed.", moduleId);
-         Audio.PlaySoundAtTransform("UNO", BigIfSquare.transform);
-         hasUnoed = true;
       }
    }
 
