@@ -39,8 +39,8 @@ public class UNO : MonoBehaviour {
    string LastCard = "";
    List<string> Deck = new List<string> { };
    List<int> illegalCards = new List<int> { };
-   List<string> kekDeck = new List<string> {};
-   List<int> played = new List<int> {};
+   List<string> kekDeck = new List<string> { };
+   List<int> played = new List<int> { };
 
    int pointer = 0;
    string numbers = "0123456789+SR"; //rules changed halfway through, just roll with it...
@@ -61,12 +61,14 @@ public class UNO : MonoBehaviour {
    int failuresToUno = 0;
    string whatYouPlayedLast = "";
    string aaaaaaaaaaaaaaaaaaaa;
+   Coroutine[] Moving = new Coroutine[7];
 
    AnimationState[] CurrentState = new AnimationState[7];
 
    enum AnimationState {
       Down,
-      Transitioning,
+      TransitioningUp,
+      TransitioningDown,
       Up
    }
 
@@ -88,22 +90,28 @@ public class UNO : MonoBehaviour {
    }
 
    void CardFlip (KMSelectable Button) {
+      if (moduleSolved) {
+         Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
+         return;
+      }
       for (int c = 0; c < 7; c++) {
          if (Button == Buttons[c]) {
-            if (cardsSubmitted == 5) {
-               Audio.PlaySoundAtTransform("UNO", BigIfSquare.transform);
-            }
-            else {
-               Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
-            }
             //Debug.Log("L");
             hmmm = WasThisCardValid(c, cardsSubmitted);
             if (hmmm) {
+
+               if (cardsSubmitted == 5) {
+                  Audio.PlaySoundAtTransform("UNO", BigIfSquare.transform);
+               }
+               else {
+                  Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
+               }
+
                //do the cool shit later
                cardsSubmitted += 1;
-               
+
                whatYouPlayedLast = Deck[c];
-               Sprites[c+1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
+               Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
                Sprites[0].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
                played.Add(c);
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is valid.", moduleId, better(whatYouPlayedLast));
@@ -111,12 +119,15 @@ public class UNO : MonoBehaviour {
                   GetComponent<KMBombModule>().HandlePass();
                   moduleSolved = true;
                }
-            } else {
+            }
+            else {
+               Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
                whatYouPlayedLast = Deck[c];
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is not valid. Strike!", moduleId, better(whatYouPlayedLast));
                cardsSubmitted = 0;
                hasUnoed = false;
                played.Clear();
+               Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
                GetComponent<KMBombModule>().HandleStrike();
                GenerateCards();
                ShowCards();
@@ -126,9 +137,15 @@ public class UNO : MonoBehaviour {
    }
 
    void CommitSquare () {
-      if (hasUnoed) {
+      if (moduleSolved) {
+         Audio.PlaySoundAtTransform("UNO", transform);
+         return;
+      }
+      if (cardsSubmitted != 5 || hasUnoed) {
          GetComponent<KMBombModule>().HandleStrike();
          Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
+         GenerateCards();
+         ShowCards();
          return;
       }
       if (cardsSubmitted == 5) {
@@ -141,8 +158,11 @@ public class UNO : MonoBehaviour {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
             Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
-            if (CurrentState[i] != AnimationState.Transitioning) {
-               StartCoroutine(CardRaise(i));
+            if (Moving[i] != null) {
+               StopCoroutine(Moving[i]);
+            }
+            if (CurrentState[i] != AnimationState.TransitioningUp) {//.0416
+               Moving[i] = StartCoroutine(CardRaise(i));
             }
          }
       }
@@ -154,16 +174,19 @@ public class UNO : MonoBehaviour {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
             //Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
-            if (CurrentState[i] != AnimationState.Transitioning) {
-               StartCoroutine(CardLower(i));
+            if (Moving[i] != null) {
+               StopCoroutine(Moving[i]);
+            }
+            if (CurrentState[i] != AnimationState.TransitioningDown) {
+               Moving[i] = StartCoroutine(CardLower(i));
             }
          }
       }
    }
 
    IEnumerator CardRaise (int j) {
-      CurrentState[j] = AnimationState.Transitioning;
-      for (int i = 0; i < 20; i++) {
+      CurrentState[j] = AnimationState.TransitioningUp;
+      while (CardsMove[j].transform.localPosition.z < -.0416f) {
          CardsMove[j].transform.localPosition += new Vector3(0, 0, .001f);
          yield return new WaitForSeconds(.01f);
       }
@@ -171,9 +194,9 @@ public class UNO : MonoBehaviour {
    }
 
    IEnumerator CardLower (int j) {
-      CurrentState[j] = AnimationState.Transitioning;
-      for (int i = 0; i < 20; i++) {
-         CardsMove[j].transform.localPosition += new Vector3(0, 0, -.001f);
+      CurrentState[j] = AnimationState.TransitioningDown;
+      while (CardsMove[j].transform.localPosition.z > -.0616f) {
+         CardsMove[j].transform.localPosition -= new Vector3(0, 0, .001f);
          yield return new WaitForSeconds(.01f);
       }
       CurrentState[j] = AnimationState.Down;
@@ -205,7 +228,7 @@ public class UNO : MonoBehaviour {
          pointer = (pointer + 1) % InitialCardDistribution.Count();
 
          whichFirst = UnityEngine.Random.Range(0, 2) == 0;
-         
+
          for (int m = 0; m < 7; m++) {
             if (m != 0) {
                whichFirst = !whichFirst;
@@ -214,7 +237,8 @@ public class UNO : MonoBehaviour {
                while (CardDistribution[pointer][1] != Deck[m][1] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer)) {
                   pointer = (pointer + 1) % InitialCardDistribution.Count();
                }
-            } else {
+            }
+            else {
                while (CardDistribution[pointer][0] != Deck[m][0] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer)) {
                   pointer = (pointer + 1) % InitialCardDistribution.Count();
                }
@@ -224,8 +248,9 @@ public class UNO : MonoBehaviour {
             pointer = (pointer + 1) % InitialCardDistribution.Count();
          }
 
-      } else { //if it is bullshit
-         bullshitCard = UnityEngine.Random.Range(1,7);
+      }
+      else { //if it is bullshit
+         bullshitCard = UnityEngine.Random.Range(1, 7);
 
          while (numbers.IndexOf(CardDistribution[pointer][1]) == -1) { //pick first card same as before
             pointer = (pointer + 1) % InitialCardDistribution.Count();
@@ -239,8 +264,8 @@ public class UNO : MonoBehaviour {
             if (m != 0) {
                whichFirst = !whichFirst;
             }
-            if (1+m == bullshitCard) { //if bullshit card
-                       //the ^ here and all prior to that in the below line isn't that necessary anymore as colored cards are always not bs but eh
+            if (1 + m == bullshitCard) { //if bullshit card
+                                         //the ^ here and all prior to that in the below line isn't that necessary anymore as colored cards are always not bs but eh
                while (!(CardDistribution[pointer][0] != Deck[m][0] ^ CardDistribution[pointer][0] != 'K') || CardDistribution[pointer] == Deck[m] || numbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer)) {
                   pointer = (pointer + 1) % InitialCardDistribution.Count();
                }
@@ -248,11 +273,13 @@ public class UNO : MonoBehaviour {
                   plusFour = true;
                   cardPriorToPlusFour = Deck[m];
                }
-            } else if (1+m == bullshitCard+1) { //if one after the bullshit card
+            }
+            else if (1 + m == bullshitCard + 1) { //if one after the bullshit card
                while (illegalCards.Contains(pointer)) {
                   pointer = (pointer + 1) % InitialCardDistribution.Count();
                }
-            } else { //otherwise just continue as normal
+            }
+            else { //otherwise just continue as normal
                if (plusFour) { //unless it's plus four :weary:
                   if (whichFirst) {
                      while (!youGotIntoALoop && (CardDistribution[pointer][1] != Deck[m][1] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer) || cardPriorToPlusFour[0] == CardDistribution[pointer][0] || cardPriorToPlusFour[1] == CardDistribution[pointer][1])) {
@@ -262,7 +289,8 @@ public class UNO : MonoBehaviour {
                            pointer = 0;
                         }
                      }
-                  } else {
+                  }
+                  else {
                      while (!youGotIntoALoop && (CardDistribution[pointer][0] != Deck[m][0] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer) || cardPriorToPlusFour[0] == CardDistribution[pointer][0] || cardPriorToPlusFour[1] == CardDistribution[pointer][1])) {
                         pointer = (pointer + 1) % InitialCardDistribution.Count();
                         if (debugPointer == pointer) {
@@ -271,7 +299,8 @@ public class UNO : MonoBehaviour {
                         }
                      }
                   }
-               } else {
+               }
+               else {
                   if (whichFirst) {
                      while (!youGotIntoALoop && (CardDistribution[pointer][1] != Deck[m][1] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer))) {
                         pointer = (pointer + 1) % InitialCardDistribution.Count();
@@ -280,7 +309,8 @@ public class UNO : MonoBehaviour {
                            pointer = 0;
                         }
                      }
-                  } else {
+                  }
+                  else {
                      while (!youGotIntoALoop && (CardDistribution[pointer][0] != Deck[m][0] || CardDistribution[pointer] == Deck[m] || notnumbers.Contains(CardDistribution[pointer][1]) || illegalCards.Contains(pointer))) {
                         pointer = (pointer + 1) % InitialCardDistribution.Count();
                         if (debugPointer == pointer) {
@@ -318,7 +348,7 @@ public class UNO : MonoBehaviour {
       Sprites[0].sprite = Cards[InitialCardDistribution.IndexOf(firstInDeck)];
 
       for (int n = 0; n < 7; n++) {
-         Sprites[1+n].sprite = Cards[InitialCardDistribution.IndexOf(Deck[n])];
+         Sprites[1 + n].sprite = Cards[InitialCardDistribution.IndexOf(Deck[n])];
       }
    }
 
@@ -326,7 +356,7 @@ public class UNO : MonoBehaviour {
       string previousCard = " ";
       string currentCard;
 
-      currentCard = Deck[k]; 
+      currentCard = Deck[k];
 
       if (played.IndexOf(k) != -1) {
          return false;
@@ -335,23 +365,29 @@ public class UNO : MonoBehaviour {
       if (i == 0 || previousCard[0] == 'K') {
          if (i == 0) { //do you think I care that I'm making the same check twice here?
             previousCard = firstInDeck;
-         } else {
+         }
+         else {
             previousCard = whatYouPlayedLast;
          }
          if (previousCard == currentCard) {
             return false;
-         } else if (previousCard[0] == currentCard[0]) {
+         }
+         else if (previousCard[0] == currentCard[0]) {
             currentRuling = false;
             return true;
-         } else if (previousCard[1] == currentCard[1]) {
+         }
+         else if (previousCard[1] == currentCard[1]) {
             currentRuling = true;
             return true;
-         } else if (currentCard[0] == 'K') {
+         }
+         else if (currentCard[0] == 'K') {
             return true;
-         } else {
+         }
+         else {
             return false;
          }
-      } else {
+      }
+      else {
          currentRuling = !currentRuling;
          if (i == 5 && !hasUnoed) {
             failuresToUno += 1;
@@ -380,7 +416,8 @@ public class UNO : MonoBehaviour {
          }
          if (currentRuling) {
             return previousCard[1] == currentCard[1];
-         } else {
+         }
+         else {
             return previousCard[0] == currentCard[0];
          }
       }
@@ -389,20 +426,53 @@ public class UNO : MonoBehaviour {
    void Yell (int piss) {
       if (piss == 1) {
          Audio.PlaySoundAtTransform("YOUHAVEUNO", BigIfSquare.transform);
-      } else {
+      }
+      else {
          Audio.PlaySoundAtTransform("IDONTHAVETWO", BigIfSquare.transform);
       }
    }
 
 #pragma warning disable 414
-   private readonly string TwitchHelpMessage = @"Use !{0} to do something.";
+   private readonly string TwitchHelpMessage = @"Use !{0} # to play that card. You can play up to seven cards in one command. Use !{0} UNO! to call UNO.";
 #pragma warning restore 414
 
    IEnumerator ProcessTwitchCommand (string Command) {
+      Command = Command.Trim().ToUpper();
+      int s = 0;
       yield return null;
+      if (Command == "UNO!") {
+         BigIfSquare.OnInteract();
+      }
+      else {
+         for (int i = 0; i < 7; i++) {
+            if (int.TryParse(Command[i].ToString(), out s)) {
+               if (int.Parse(Command[i].ToString()) < 1 || int.Parse(Command[i].ToString()) > 7) {
+                  yield return "sendtochaterror I don't understand!";
+                  yield break;
+               }
+               Buttons[int.Parse(Command[i].ToString()) - 1].OnInteract();
+            }
+            yield return new WaitForSeconds(.1f);
+         }
+      }
    }
 
+   /*
    IEnumerator TwitchHandleForcedSolve () {
+      bool[] Used = new bool[7];
+      for (int i = 0; i < 7; i++) {
+         if (i == 4) {
+            BigIfSquare.OnInteract();
+            yield return new WaitForSeconds(.1f);
+         }
+         for (int j = 0; j < 7; j++) {
+            if (Deck[j] == kekDeck[i] && !Used[j]) {
+               Used[i] = true;
+               Buttons[i].OnInteract();
+               yield return new WaitForSeconds(.1f);
+            }
+         }
+      }
       yield return null;
-   }
+   }*/
 }
