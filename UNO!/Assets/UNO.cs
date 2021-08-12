@@ -25,6 +25,7 @@ public class UNO : MonoBehaviour {
    public SpriteRenderer[] Sprites;
    public KMSelectable BigIfSquare;
    public Sprite Bill;
+   public SpriteRenderer[] PlayedCards;
 
    public GameObject[] CardsMove;
 
@@ -62,6 +63,7 @@ public class UNO : MonoBehaviour {
    string whatYouPlayedLast = "";
    string aaaaaaaaaaaaaaaaaaaa;
    Coroutine[] Moving = new Coroutine[7];
+   int CurrentPlayedIndex;
 
    AnimationState[] CurrentState = new AnimationState[7];
 
@@ -112,7 +114,9 @@ public class UNO : MonoBehaviour {
 
                whatYouPlayedLast = Deck[c];
                Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
-               Sprites[0].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
+               PlayedCards[CurrentPlayedIndex].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
+               CurrentPlayedIndex++;
+               //Sprites[0].sprite = ;
                played.Add(c);
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is valid.", moduleId, better(whatYouPlayedLast));
                if (cardsSubmitted == 7) {
@@ -138,7 +142,7 @@ public class UNO : MonoBehaviour {
 
    void CommitSquare () {
       if (moduleSolved) {
-         Audio.PlaySoundAtTransform("UNO", transform);
+         Audio.PlaySoundAtTransform("UNO", BigIfSquare.transform);
          return;
       }
       if (cardsSubmitted != 5 || hasUnoed) {
@@ -150,6 +154,7 @@ public class UNO : MonoBehaviour {
       }
       if (cardsSubmitted == 5) {
          Debug.LogFormat("[UNO! #{0}] UNO! pressed.", moduleId);
+         Audio.PlaySoundAtTransform("UnoButtonPressSound", BigIfSquare.transform);
          hasUnoed = true;
       }
    }
@@ -212,6 +217,10 @@ public class UNO : MonoBehaviour {
    }
 
    void GenerateCards () {
+      for (int i = 0; i < 7; i++) {
+         PlayedCards[i].sprite = null;
+      }
+      CurrentPlayedIndex = 0;
       startAllOver:
       Deck.Clear();
       illegalCards.Clear();
