@@ -24,10 +24,10 @@ public class UNO : MonoBehaviour {
    public Sprite[] Cards;
    public SpriteRenderer[] Sprites;
    public KMSelectable BigIfSquare;
-   public Sprite Bill;
-   public SpriteRenderer[] PlayedCards;
+    public KMHighlightable[] highlights;
+    public TextMesh[] tpLabels;
 
-   public GameObject[] CardsMove;
+   public Transform[] CardsMove;
 
    List<string> InitialCardDistribution = new List<string> { "R0", "R1", "R1", "R2", "R2", "R3", "R3", "R4", "R4", "R5", "R5", "R6", "R6", "R7", "R7", "R8", "R8", "R9", "R9", "R+2", "R+2", "RS", "RS", "RR", "RR", "G0", "G1", "G1", "G2", "G2", "G3", "G3", "G4", "G4", "G5", "G5", "G6", "G6", "G7", "G7", "G8", "G8", "G9", "G9", "G+2", "G+2", "GS", "GS", "GR", "GR", "Y0", "Y1", "Y1", "Y2", "Y2", "Y3", "Y3", "Y4", "Y4", "Y5", "Y5", "Y6", "Y6", "Y7", "Y7", "Y8", "Y8", "Y9", "Y9", "Y+2", "Y+2", "YS", "YS", "YR", "YR", "B0", "B1", "B1", "B2", "B2", "B3", "B3", "B4", "B4", "B5", "B5", "B6", "B6", "B7", "B7", "B8", "B8", "B9", "B9", "B+2", "B+2", "BS", "BS", "BR", "BR", "K*4", "K*4", "K*4", "K*4", "KW", "KW", "KW", "KW" };
    //Top is used for a reset.
@@ -61,11 +61,15 @@ public class UNO : MonoBehaviour {
    bool hasUnoed = false;
    int failuresToUno = 0;
    string whatYouPlayedLast = "";
-   string aaaaaaaaaaaaaaaaaaaa;
+   string ansLog;
    Coroutine[] Moving = new Coroutine[7];
    int CurrentPlayedIndex;
+    bool[] alreadyPlayed = new bool[7];
 
    AnimationState[] CurrentState = new AnimationState[7];
+    private Vector3[] startingPositions = new Vector3[7];
+    private Vector3[] currentPositions = new Vector3[7];
+    private Coroutine centerCor;
 
    enum AnimationState {
       Down,
@@ -77,15 +81,20 @@ public class UNO : MonoBehaviour {
    static int moduleIdCounter = 1;
    int moduleId;
    private bool moduleSolved;
+    private bool TwitchPlaysActive;
 
    void Awake () {
       moduleId = moduleIdCounter++;
-
       foreach (KMSelectable Button in Buttons) {
          Button.OnInteract += delegate () { CardFlip(Button); return false; };
          Button.OnHighlight += delegate () { CardHover(Button); };
          Button.OnHighlightEnded += delegate () { CardDehover(Button); };
       }
+        for (int i = 0; i < 7; i++)
+        {
+            startingPositions[i] = CardsMove[i].localPosition;
+            currentPositions[i] = startingPositions[i];
+        }
       BigIfSquare.OnInteract += delegate () { CommitSquare(); return false; };
 
       GetComponent<KMBombModule>().OnActivate += Activate;
@@ -113,10 +122,11 @@ public class UNO : MonoBehaviour {
                cardsSubmitted += 1;
 
                whatYouPlayedLast = Deck[c];
-               Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
-               PlayedCards[CurrentPlayedIndex].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
+                StartCoroutine(PlaceCard(Array.IndexOf(Buttons, Button)));
+                if (centerCor != null)
+                    StopCoroutine(centerCor);
+                centerCor = StartCoroutine(RecenterCards());
                CurrentPlayedIndex++;
-               //Sprites[0].sprite = ;
                played.Add(c);
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is valid.", moduleId, better(whatYouPlayedLast));
                if (cardsSubmitted == 7) {
@@ -133,6 +143,7 @@ public class UNO : MonoBehaviour {
                played.Clear();
                Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
                GetComponent<KMBombModule>().HandleStrike();
+                ResetCards();
                GenerateCards();
                ShowCards();
             }
@@ -150,6 +161,7 @@ public class UNO : MonoBehaviour {
          Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
          GenerateCards();
          ShowCards();
+         ResetCards();
          return;
       }
       if (cardsSubmitted == 5) {
@@ -162,6 +174,8 @@ public class UNO : MonoBehaviour {
    void CardHover (KMSelectable Button) {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
+            if (alreadyPlayed[i])
+                return;
             Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
             if (Moving[i] != null) {
                StopCoroutine(Moving[i]);
@@ -178,6 +192,8 @@ public class UNO : MonoBehaviour {
    void CardDehover (KMSelectable Button) {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
+             if (alreadyPlayed[i])
+                return;
             //Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
             if (Moving[i] != null) {
                StopCoroutine(Moving[i]);
@@ -191,24 +207,28 @@ public class UNO : MonoBehaviour {
 
    IEnumerator CardRaise (int j) {
       CurrentState[j] = AnimationState.TransitioningUp;
-      while (CardsMove[j].transform.localPosition.z < -.0416f) {
-         CardsMove[j].transform.localPosition += new Vector3(0, 0, .001f);
-         yield return new WaitForSeconds(.01f);
+      while (CardsMove[j].localPosition.y > -1.1f) {
+         CardsMove[j].localPosition -= Time.deltaTime * 5 * Vector3.up;
+        yield return null;
       }
       CurrentState[j] = AnimationState.Up;
    }
 
    IEnumerator CardLower (int j) {
       CurrentState[j] = AnimationState.TransitioningDown;
-      while (CardsMove[j].transform.localPosition.z > -.0616f) {
-         CardsMove[j].transform.localPosition -= new Vector3(0, 0, .001f);
-         yield return new WaitForSeconds(.01f);
+      while (CardsMove[j].localPosition.y < 0) {
+         CardsMove[j].localPosition -= Time.deltaTime * 5 * Vector3.down;
+        yield return null;
       }
+        CardsMove[j].localPosition = currentPositions[j];
       CurrentState[j] = AnimationState.Down;
    }
 
    void Activate () {
       Audio.PlaySoundAtTransform("StartNoiseFade", transform);
+        if (TwitchPlaysActive)
+            for (int i = 0; i < 7; i++)
+                tpLabels[i].gameObject.SetActive(true);
    }
 
    void Start () {
@@ -217,9 +237,6 @@ public class UNO : MonoBehaviour {
    }
 
    void GenerateCards () {
-      for (int i = 0; i < 7; i++) {
-         PlayedCards[i].sprite = null;
-      }
       CurrentPlayedIndex = 0;
       startAllOver:
       Deck.Clear();
@@ -342,12 +359,12 @@ public class UNO : MonoBehaviour {
       }
       firstInDeck = Deck[0];
       Deck.RemoveAt(0);
-      aaaaaaaaaaaaaaaaaaaa = String.Format("{0}, {1}, {2}, {3}, {4}, {5}, {6}", better(Deck[0]), better(Deck[1]), better(Deck[2]), better(Deck[3]), better(Deck[4]), better(Deck[5]), better(Deck[6]));
+      ansLog = Enumerable.Range(0, 7).Select(x => better(Deck[x])).Join(", ");
       kekDeck = Deck;
       Deck = Deck.Shuffle();
-      Debug.LogFormat("[UNO! #{0}] Cards: {1} / {2}, {3}, {4}, {5}, {6}, {7}, {8}", moduleId, better(firstInDeck), better(kekDeck[0]), better(kekDeck[1]), better(kekDeck[2]), better(kekDeck[3]), better(kekDeck[4]), better(kekDeck[5]), better(kekDeck[6]));
-      Debug.LogFormat("[UNO! #{0}] A valid order: {1}", moduleId, aaaaaaaaaaaaaaaaaaaa);
-   }
+        Debug.LogFormat("[UNO! #{0}] Cards: {1} / {2}", moduleId, better(firstInDeck), Enumerable.Range(0, 7).Select(x => better(kekDeck[x])).Join(", "));
+        Debug.LogFormat("[UNO! #{0}] A valid order: {1}", moduleId, ansLog);
+    }
 
    string better (string torture) {
       return nicerNames[InitialCardDistribution.IndexOf(torture)];
@@ -441,31 +458,93 @@ public class UNO : MonoBehaviour {
       }
    }
 
+    void ResetCards()
+    {
+        StopAllCoroutines();
+        for (int i = 0; i < 7; i++)
+        {
+            CardsMove[i].localPosition = startingPositions[i];
+            currentPositions[i] = startingPositions[i];
+            CardsMove[i].localEulerAngles = Vector3.zero;
+            CardsMove[i].localScale = Vector3.one;
+            Sprites[i + 1].sortingOrder = 0;
+            alreadyPlayed[i] = false;
+            highlights[i].gameObject.SetActive(true);
+        }
+    }
+
+    IEnumerator PlaceCard(int pos)
+    {
+        Sprites[pos + 1].sortingOrder = cardsSubmitted + 1;
+        alreadyPlayed[pos] = true;
+        highlights[pos].gameObject.SetActive(false);
+        Vector3 startPos = CardsMove[pos].localPosition;
+        Vector3 endPos = new Vector3(0, -4.55f, 0.01f * (cardsSubmitted + 1));
+        Vector3 endRot = Rnd.Range(-20f, 20f) * Vector3.forward;
+        Vector3 endScale = new Vector3(1.425f, 1.425f, 1);
+        float delta = 0;
+        while (delta < 1)
+        {
+            delta += 2 * Time.deltaTime;
+            CardsMove[pos].localPosition = Vector3.Lerp(startPos, endPos, delta);
+            CardsMove[pos].localEulerAngles = Vector3.Lerp(Vector3.zero, endRot, delta);
+            CardsMove[pos].localScale = Vector3.Lerp(Vector3.one, endScale, delta);
+            yield return null;
+        }
+    }
+    IEnumerator RecenterCards()
+    {
+        const float cardDist = 1.725f;
+        int[] remainingCards = Enumerable.Range(0, 7).Where(x => !alreadyPlayed[x]).ToArray();
+        float[] endingPositions = new float[remainingCards.Length];
+        if (endingPositions.Length == 0)
+            yield break;
+        endingPositions[0] = cardDist * (remainingCards.Length - 1) / 2;
+        for (int i = 1; i < remainingCards.Length; i++)
+            endingPositions[i] = endingPositions[i - 1] - cardDist;
+        for (int i = 0; i < remainingCards.Length; i++)
+            currentPositions[remainingCards[i]] = endingPositions[i] * Vector3.right;
+        float delta = 0;
+        Vector3[] currentActualPositions = CardsMove.Select(x => x.localPosition).ToArray();
+        while (delta < 1)
+        {
+            delta += 4 * Time.deltaTime;
+            for (int i = 0; i < remainingCards.Length; i++)
+                CardsMove[remainingCards[i]].localPosition = Vector3.Lerp(currentActualPositions[remainingCards[i]], currentPositions[remainingCards[i]], delta);
+            yield return null;
+        }
+
+    }
+
 #pragma warning disable 414
-   private readonly string TwitchHelpMessage = @"Use !{0} # to play that card. You can play up to seven cards in one command. Use !{0} UNO! to call UNO.";
+   private readonly string TwitchHelpMessage = @"Use <!{0} play #> to play that card. Use !{0} UNO! to call UNO. Chain commands using spaces. The cards are ordered from left to right at the beginning of the module, and the labels are printed on the cards.";
 #pragma warning restore 414
 
-   IEnumerator ProcessTwitchCommand (string Command) {
-      Command = Command.Trim().ToUpper();
-      int s = 0;
-      yield return null;
-      if (Command == "UNO!") {
-         BigIfSquare.OnInteract();
-      }
-      else {
-         for (int i = 0; i < 7; i++) {
-            if (int.TryParse(Command[i].ToString(), out s)) {
-               if (int.Parse(Command[i].ToString()) < 1 || int.Parse(Command[i].ToString()) > 7) {
-                  yield return "sendtochaterror I don't understand!";
-                  yield break;
-               }
-               Buttons[int.Parse(Command[i].ToString()) - 1].OnInteract();
+   KMSelectable[] ProcessTwitchCommand (string command)
+    {
+        List<KMSelectable> presses = new List<KMSelectable>();
+        command = command.Trim().Trim().Trim().Trim().Trim().Trim().Trim().ToUpperInvariant().ToUpper().Trim().ToUpperInvariant().Join("").Reverse().Reverse().Join("");
+        Match m = Regex.Match(command, @"^(?:PLAY\s+)?((?:(?:[1-7]|UNO!?)\s*)+)$");
+        if (m.Success)
+        {
+            string[] parameters = m.Groups[1].Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            HashSet<int> played = new HashSet<int>(Enumerable.Range(0, 7).Where(x => alreadyPlayed[x]));
+            foreach (string cmd in parameters)
+            {
+                if (cmd.StartsWith("UNO"))
+                    presses.Add(BigIfSquare);
+                else
+                {
+                    int num = int.Parse(cmd) - 1;
+                    if (played.Add(num))
+                        presses.Add(Buttons[num]);
+                    else return null;
+                }
             }
-            yield return new WaitForSeconds(.1f);
-         }
-      }
-   }
-
+            return presses.ToArray();
+        }
+        else return null;
+    }
    /*
    IEnumerator TwitchHandleForcedSolve () {
       bool[] Used = new bool[7];
