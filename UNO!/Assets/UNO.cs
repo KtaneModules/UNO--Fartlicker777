@@ -25,9 +25,8 @@ public class UNO : MonoBehaviour {
    public SpriteRenderer[] Sprites;
    public KMSelectable BigIfSquare;
    public Sprite Bill;
-   public SpriteRenderer[] PlayedCards;
 
-   public GameObject[] CardsMove;
+   public Transform[] CardsMove;
 
    List<string> InitialCardDistribution = new List<string> { "R0", "R1", "R1", "R2", "R2", "R3", "R3", "R4", "R4", "R5", "R5", "R6", "R6", "R7", "R7", "R8", "R8", "R9", "R9", "R+2", "R+2", "RS", "RS", "RR", "RR", "G0", "G1", "G1", "G2", "G2", "G3", "G3", "G4", "G4", "G5", "G5", "G6", "G6", "G7", "G7", "G8", "G8", "G9", "G9", "G+2", "G+2", "GS", "GS", "GR", "GR", "Y0", "Y1", "Y1", "Y2", "Y2", "Y3", "Y3", "Y4", "Y4", "Y5", "Y5", "Y6", "Y6", "Y7", "Y7", "Y8", "Y8", "Y9", "Y9", "Y+2", "Y+2", "YS", "YS", "YR", "YR", "B0", "B1", "B1", "B2", "B2", "B3", "B3", "B4", "B4", "B5", "B5", "B6", "B6", "B7", "B7", "B8", "B8", "B9", "B9", "B+2", "B+2", "BS", "BS", "BR", "BR", "K*4", "K*4", "K*4", "K*4", "KW", "KW", "KW", "KW" };
    //Top is used for a reset.
@@ -64,8 +63,10 @@ public class UNO : MonoBehaviour {
    string aaaaaaaaaaaaaaaaaaaa;
    Coroutine[] Moving = new Coroutine[7];
    int CurrentPlayedIndex;
+    bool[] alreadyPlayed = new bool[7];
 
    AnimationState[] CurrentState = new AnimationState[7];
+    private Vector3[] startingPositions = new Vector3[7];
 
    enum AnimationState {
       Down,
@@ -86,6 +87,8 @@ public class UNO : MonoBehaviour {
          Button.OnHighlight += delegate () { CardHover(Button); };
          Button.OnHighlightEnded += delegate () { CardDehover(Button); };
       }
+        for (int i = 0; i < 7; i++)
+            startingPositions[i] = CardsMove[i].localPosition;
       BigIfSquare.OnInteract += delegate () { CommitSquare(); return false; };
 
       GetComponent<KMBombModule>().OnActivate += Activate;
@@ -113,8 +116,8 @@ public class UNO : MonoBehaviour {
                cardsSubmitted += 1;
 
                whatYouPlayedLast = Deck[c];
-               Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
-               PlayedCards[CurrentPlayedIndex].sprite = Cards[InitialCardDistribution.IndexOf(whatYouPlayedLast)];
+                StartCoroutine(PlaceCard(Array.IndexOf(Buttons, Button)));
+               //Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
                CurrentPlayedIndex++;
                //Sprites[0].sprite = ;
                played.Add(c);
@@ -133,6 +136,7 @@ public class UNO : MonoBehaviour {
                played.Clear();
                Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
                GetComponent<KMBombModule>().HandleStrike();
+                ResetCards();
                GenerateCards();
                ShowCards();
             }
@@ -162,6 +166,8 @@ public class UNO : MonoBehaviour {
    void CardHover (KMSelectable Button) {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
+            if (alreadyPlayed[i])
+                return;
             Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
             if (Moving[i] != null) {
                StopCoroutine(Moving[i]);
@@ -178,6 +184,8 @@ public class UNO : MonoBehaviour {
    void CardDehover (KMSelectable Button) {
       for (int i = 0; i < 7; i++) {
          if (Button == Buttons[i]) {
+             if (alreadyPlayed[i])
+                return;
             //Audio.PlaySoundAtTransform("Hover", Button.transform); //make it so the card goes up a bit when hovered
             if (Moving[i] != null) {
                StopCoroutine(Moving[i]);
@@ -191,19 +199,20 @@ public class UNO : MonoBehaviour {
 
    IEnumerator CardRaise (int j) {
       CurrentState[j] = AnimationState.TransitioningUp;
-      while (CardsMove[j].transform.localPosition.z < -.0416f) {
-         CardsMove[j].transform.localPosition += new Vector3(0, 0, .001f);
-         yield return new WaitForSeconds(.01f);
+      while (CardsMove[j].localPosition.y > -1.1f) {
+         CardsMove[j].localPosition -= Time.deltaTime * 5 * Vector3.up;
+        yield return null;
       }
       CurrentState[j] = AnimationState.Up;
    }
 
    IEnumerator CardLower (int j) {
       CurrentState[j] = AnimationState.TransitioningDown;
-      while (CardsMove[j].transform.localPosition.z > -.0616f) {
-         CardsMove[j].transform.localPosition -= new Vector3(0, 0, .001f);
-         yield return new WaitForSeconds(.01f);
+      while (CardsMove[j].localPosition.y < 0) {
+         CardsMove[j].localPosition -= Time.deltaTime * 5 * Vector3.down;
+        yield return null;
       }
+        CardsMove[j].localPosition = startingPositions[j];
       CurrentState[j] = AnimationState.Down;
    }
 
@@ -217,9 +226,6 @@ public class UNO : MonoBehaviour {
    }
 
    void GenerateCards () {
-      for (int i = 0; i < 7; i++) {
-         PlayedCards[i].sprite = null;
-      }
       CurrentPlayedIndex = 0;
       startAllOver:
       Deck.Clear();
@@ -440,6 +446,39 @@ public class UNO : MonoBehaviour {
          Audio.PlaySoundAtTransform("IDONTHAVETWO", BigIfSquare.transform);
       }
    }
+
+    void ResetCards()
+    {
+        for (int i = 0; i < 7; i++)
+        {
+            CardsMove[i].localPosition = startingPositions[i];
+            CardsMove[i].localEulerAngles = Vector3.zero;
+            CardsMove[i].localScale = Vector3.one;
+            Sprites[i + 1].sortingOrder = 0;
+            alreadyPlayed[i] = false;
+            Buttons[i].GetComponentInChildren<KMHighlightable>().gameObject.SetActive(true);
+        }
+    }
+
+    IEnumerator PlaceCard(int pos)
+    {
+        Sprites[pos + 1].sortingOrder = cardsSubmitted + 1;
+        alreadyPlayed[pos] = true;
+        Buttons[pos].GetComponentInChildren<KMHighlightable>().gameObject.SetActive(false);
+        Vector3 startPos = CardsMove[pos].localPosition;
+        Vector3 endPos = new Vector3(0, -4.55f, 0.01f * (cardsSubmitted + 1));
+        Vector3 endRot = Rnd.Range(-20f, 20f) * Vector3.forward;
+        Vector3 endScale = new Vector3(1.425f, 1.425f, 1);
+        float delta = 0;
+        while (delta < 1)
+        {
+            delta += 2 * Time.deltaTime;
+            CardsMove[pos].localPosition = Vector3.Lerp(startPos, endPos, delta);
+            CardsMove[pos].localEulerAngles = Vector3.Lerp(Vector3.zero, endRot, delta);
+            CardsMove[pos].localScale = Vector3.Lerp(Vector3.one, endScale, delta);
+            yield return null;
+        }
+    }
 
 #pragma warning disable 414
    private readonly string TwitchHelpMessage = @"Use !{0} # to play that card. You can play up to seven cards in one command. Use !{0} UNO! to call UNO.";
