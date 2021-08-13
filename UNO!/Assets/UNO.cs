@@ -24,7 +24,8 @@ public class UNO : MonoBehaviour {
    public Sprite[] Cards;
    public SpriteRenderer[] Sprites;
    public KMSelectable BigIfSquare;
-   public Sprite Bill;
+    public KMHighlightable[] highlights;
+    public TextMesh[] tpLabels;
 
    public Transform[] CardsMove;
 
@@ -60,13 +61,15 @@ public class UNO : MonoBehaviour {
    bool hasUnoed = false;
    int failuresToUno = 0;
    string whatYouPlayedLast = "";
-   string aaaaaaaaaaaaaaaaaaaa;
+   string ansLog;
    Coroutine[] Moving = new Coroutine[7];
    int CurrentPlayedIndex;
     bool[] alreadyPlayed = new bool[7];
 
    AnimationState[] CurrentState = new AnimationState[7];
     private Vector3[] startingPositions = new Vector3[7];
+    private Vector3[] currentPositions = new Vector3[7];
+    private Coroutine centerCor;
 
    enum AnimationState {
       Down,
@@ -78,17 +81,20 @@ public class UNO : MonoBehaviour {
    static int moduleIdCounter = 1;
    int moduleId;
    private bool moduleSolved;
+    private bool TwitchPlaysActive;
 
    void Awake () {
       moduleId = moduleIdCounter++;
-
       foreach (KMSelectable Button in Buttons) {
          Button.OnInteract += delegate () { CardFlip(Button); return false; };
          Button.OnHighlight += delegate () { CardHover(Button); };
          Button.OnHighlightEnded += delegate () { CardDehover(Button); };
       }
         for (int i = 0; i < 7; i++)
+        {
             startingPositions[i] = CardsMove[i].localPosition;
+            currentPositions[i] = startingPositions[i];
+        }
       BigIfSquare.OnInteract += delegate () { CommitSquare(); return false; };
 
       GetComponent<KMBombModule>().OnActivate += Activate;
@@ -117,9 +123,10 @@ public class UNO : MonoBehaviour {
 
                whatYouPlayedLast = Deck[c];
                 StartCoroutine(PlaceCard(Array.IndexOf(Buttons, Button)));
-               //Sprites[c + 1].sprite = Bill; //Obviously when you make it look better you have to murder Bill
+                if (centerCor != null)
+                    StopCoroutine(centerCor);
+                centerCor = StartCoroutine(RecenterCards());
                CurrentPlayedIndex++;
-               //Sprites[0].sprite = ;
                played.Add(c);
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is valid.", moduleId, better(whatYouPlayedLast));
                if (cardsSubmitted == 7) {
@@ -154,6 +161,7 @@ public class UNO : MonoBehaviour {
          Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
          GenerateCards();
          ShowCards();
+         ResetCards();
          return;
       }
       if (cardsSubmitted == 5) {
@@ -212,12 +220,15 @@ public class UNO : MonoBehaviour {
          CardsMove[j].localPosition -= Time.deltaTime * 5 * Vector3.down;
         yield return null;
       }
-        CardsMove[j].localPosition = startingPositions[j];
+        CardsMove[j].localPosition = currentPositions[j];
       CurrentState[j] = AnimationState.Down;
    }
 
    void Activate () {
       Audio.PlaySoundAtTransform("StartNoiseFade", transform);
+        if (TwitchPlaysActive)
+            for (int i = 0; i < 7; i++)
+                tpLabels[i].gameObject.SetActive(true);
    }
 
    void Start () {
@@ -348,12 +359,12 @@ public class UNO : MonoBehaviour {
       }
       firstInDeck = Deck[0];
       Deck.RemoveAt(0);
-      aaaaaaaaaaaaaaaaaaaa = String.Format("{0}, {1}, {2}, {3}, {4}, {5}, {6}", better(Deck[0]), better(Deck[1]), better(Deck[2]), better(Deck[3]), better(Deck[4]), better(Deck[5]), better(Deck[6]));
+      ansLog = Enumerable.Range(0, 7).Select(x => better(Deck[x])).Join(", ");
       kekDeck = Deck;
       Deck = Deck.Shuffle();
-      Debug.LogFormat("[UNO! #{0}] Cards: {1} / {2}, {3}, {4}, {5}, {6}, {7}, {8}", moduleId, better(firstInDeck), better(kekDeck[0]), better(kekDeck[1]), better(kekDeck[2]), better(kekDeck[3]), better(kekDeck[4]), better(kekDeck[5]), better(kekDeck[6]));
-      Debug.LogFormat("[UNO! #{0}] A valid order: {1}", moduleId, aaaaaaaaaaaaaaaaaaaa);
-   }
+        Debug.LogFormat("[UNO! #{0}] Cards: {1} / {2}", moduleId, better(firstInDeck), Enumerable.Range(0, 7).Select(x => better(kekDeck[x])).Join(", "));
+        Debug.LogFormat("[UNO! #{0}] A valid order: {1}", moduleId, ansLog);
+    }
 
    string better (string torture) {
       return nicerNames[InitialCardDistribution.IndexOf(torture)];
@@ -449,14 +460,16 @@ public class UNO : MonoBehaviour {
 
     void ResetCards()
     {
+        StopAllCoroutines();
         for (int i = 0; i < 7; i++)
         {
             CardsMove[i].localPosition = startingPositions[i];
+            currentPositions[i] = startingPositions[i];
             CardsMove[i].localEulerAngles = Vector3.zero;
             CardsMove[i].localScale = Vector3.one;
             Sprites[i + 1].sortingOrder = 0;
             alreadyPlayed[i] = false;
-            Buttons[i].GetComponentInChildren<KMHighlightable>().gameObject.SetActive(true);
+            highlights[i].gameObject.SetActive(true);
         }
     }
 
@@ -464,7 +477,7 @@ public class UNO : MonoBehaviour {
     {
         Sprites[pos + 1].sortingOrder = cardsSubmitted + 1;
         alreadyPlayed[pos] = true;
-        Buttons[pos].GetComponentInChildren<KMHighlightable>().gameObject.SetActive(false);
+        highlights[pos].gameObject.SetActive(false);
         Vector3 startPos = CardsMove[pos].localPosition;
         Vector3 endPos = new Vector3(0, -4.55f, 0.01f * (cardsSubmitted + 1));
         Vector3 endRot = Rnd.Range(-20f, 20f) * Vector3.forward;
@@ -479,32 +492,59 @@ public class UNO : MonoBehaviour {
             yield return null;
         }
     }
+    IEnumerator RecenterCards()
+    {
+        const float cardDist = 1.725f;
+        int[] remainingCards = Enumerable.Range(0, 7).Where(x => !alreadyPlayed[x]).ToArray();
+        float[] endingPositions = new float[remainingCards.Length];
+        if (endingPositions.Length == 0)
+            yield break;
+        endingPositions[0] = cardDist * (remainingCards.Length - 1) / 2;
+        for (int i = 1; i < remainingCards.Length; i++)
+            endingPositions[i] = endingPositions[i - 1] - cardDist;
+        for (int i = 0; i < remainingCards.Length; i++)
+            currentPositions[remainingCards[i]] = endingPositions[i] * Vector3.right;
+        float delta = 0;
+        Vector3[] currentActualPositions = CardsMove.Select(x => x.localPosition).ToArray();
+        while (delta < 1)
+        {
+            delta += 4 * Time.deltaTime;
+            for (int i = 0; i < remainingCards.Length; i++)
+                CardsMove[remainingCards[i]].localPosition = Vector3.Lerp(currentActualPositions[remainingCards[i]], currentPositions[remainingCards[i]], delta);
+            yield return null;
+        }
+
+    }
 
 #pragma warning disable 414
-   private readonly string TwitchHelpMessage = @"Use !{0} # to play that card. You can play up to seven cards in one command. Use !{0} UNO! to call UNO.";
+   private readonly string TwitchHelpMessage = @"Use <!{0} play #> to play that card. Use !{0} UNO! to call UNO. Chain commands using spaces. The cards are ordered from left to right at the beginning of the module, and the labels are printed on the cards.";
 #pragma warning restore 414
 
-   IEnumerator ProcessTwitchCommand (string Command) {
-      Command = Command.Trim().ToUpper();
-      int s = 0;
-      yield return null;
-      if (Command == "UNO!") {
-         BigIfSquare.OnInteract();
-      }
-      else {
-         for (int i = 0; i < 7; i++) {
-            if (int.TryParse(Command[i].ToString(), out s)) {
-               if (int.Parse(Command[i].ToString()) < 1 || int.Parse(Command[i].ToString()) > 7) {
-                  yield return "sendtochaterror I don't understand!";
-                  yield break;
-               }
-               Buttons[int.Parse(Command[i].ToString()) - 1].OnInteract();
+   KMSelectable[] ProcessTwitchCommand (string command)
+    {
+        List<KMSelectable> presses = new List<KMSelectable>();
+        command = command.Trim().Trim().Trim().Trim().Trim().Trim().Trim().ToUpperInvariant().ToUpper().Trim().ToUpperInvariant().Join("").Reverse().Reverse().Join("");
+        Match m = Regex.Match(command, @"^(?:PLAY\s+)?((?:(?:[1-7]|UNO!?)\s*)+)$");
+        if (m.Success)
+        {
+            string[] parameters = m.Groups[1].Value.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            HashSet<int> played = new HashSet<int>(Enumerable.Range(0, 7).Where(x => alreadyPlayed[x]));
+            foreach (string cmd in parameters)
+            {
+                if (cmd.StartsWith("UNO"))
+                    presses.Add(BigIfSquare);
+                else
+                {
+                    int num = int.Parse(cmd) - 1;
+                    if (played.Add(num))
+                        presses.Add(Buttons[num]);
+                    else return null;
+                }
             }
-            yield return new WaitForSeconds(.1f);
-         }
-      }
-   }
-
+            return presses.ToArray();
+        }
+        else return null;
+    }
    /*
    IEnumerator TwitchHandleForcedSolve () {
       bool[] Used = new bool[7];
