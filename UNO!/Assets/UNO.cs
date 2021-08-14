@@ -62,6 +62,7 @@ public class UNO : MonoBehaviour {
    int failuresToUno = 0;
    string whatYouPlayedLast = "";
    string ansLog;
+   bool theOnePlayedTwoStagesAgoWasBlack = false;
    Coroutine[] Moving = new Coroutine[7];
    int CurrentPlayedIndex;
    bool[] alreadyPlayed = new bool[7];
@@ -387,7 +388,13 @@ public class UNO : MonoBehaviour {
          return false;
       }
 
-      if (i == 0 || Deck[played[i - 2]][0] == 'K') {
+      if (i < 2) {
+         theOnePlayedTwoStagesAgoWasBlack = false;
+      } else {
+         theOnePlayedTwoStagesAgoWasBlack = (Deck[played[i - 2]][0] == 'K');
+      }
+
+      if (i == 0 || theOnePlayedTwoStagesAgoWasBlack) {
          if (i == 0) { //do you think I care that I'm making the same check twice here?
             previousCard = firstInDeck;
          }
