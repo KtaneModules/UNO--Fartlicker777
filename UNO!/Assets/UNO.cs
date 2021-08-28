@@ -384,7 +384,7 @@ public class UNO : MonoBehaviour {
 
       currentCard = Deck[k];
 
-      if (played.IndexOf(k) != -1) {
+      if (alreadyPlayed[k]) {
          return false;
       }
 
@@ -392,6 +392,21 @@ public class UNO : MonoBehaviour {
          theOnePlayedTwoStagesAgoWasBlack = false;
       } else {
          theOnePlayedTwoStagesAgoWasBlack = (Deck[played[i - 2]][0] == 'K');
+      }
+
+      if (currentCard == "KW") {
+            return true;
+         }
+      if (currentCard == "K*4") {
+         for (int s = 0; s < 7; s++) {
+            if (Deck[s] == "K*4") {
+               continue;
+            }
+            if (WasThisCardValid(s, i)) {
+               return false;
+            }
+         }
+         return true;
       }
 
       if (i == 0 || theOnePlayedTwoStagesAgoWasBlack) {
@@ -412,9 +427,6 @@ public class UNO : MonoBehaviour {
             currentRuling = true;
             return true;
          }
-         else if (currentCard[0] == 'K') {
-            return true;
-         }
          else {
             return false;
          }
@@ -428,22 +440,6 @@ public class UNO : MonoBehaviour {
          }
          previousCard = whatYouPlayedLast;
          if (previousCard[0] == 'K') {
-            return true;
-         }
-         if (currentCard == "KW") {
-            return true;
-         }
-         if (currentCard == "K*4") {
-            for (int s = 0; s < 7; s++) {
-               if (s == k) {
-                  continue;
-               }
-               if (played.IndexOf(s) == -1) {
-                  if (WasThisCardValid(s, i)) {
-                     return false;
-                  }
-               }
-            }
             return true;
          }
          if (currentRuling) {
