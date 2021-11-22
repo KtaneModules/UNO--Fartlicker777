@@ -513,7 +513,7 @@ public class UNO : MonoBehaviour {
    }
 
 #pragma warning disable 414
-   private readonly string TwitchHelpMessage = @"Use <!{0} play #> to play that card. Use !{0} UNO! to call UNO. Chain commands using spaces. The cards are ordered from left to right at the beginning of the module, and the labels are printed on the cards.";
+   private readonly string TwitchHelpMessage = @"Use <!{0} play #> to play that card where 'play' is optional. Use <!{0} UNO!> to call UNO. Chain commands using spaces. The cards are ordered from left to right at the beginning of the module, and the labels are printed on the cards.";
 #pragma warning restore 414
 
    KMSelectable[] ProcessTwitchCommand (string command) {
@@ -528,6 +528,7 @@ public class UNO : MonoBehaviour {
                presses.Add(BigIfSquare);
             else {
                int num = int.Parse(cmd) - 1;
+               if (num > 9) return null;
                if (played.Add(num))
                   presses.Add(Buttons[num]);
                else return null;
@@ -537,22 +538,23 @@ public class UNO : MonoBehaviour {
       }
       else return null;
    }
-   /*
    IEnumerator TwitchHandleForcedSolve () {
       bool[] Used = new bool[7];
+      string[] Order = ansLog.Split(',');
       for (int i = 0; i < 7; i++) {
-         if (i == 4) {
+         if (i == 5) {
             BigIfSquare.OnInteract();
             yield return new WaitForSeconds(.1f);
          }
          for (int j = 0; j < 7; j++) {
-            if (Deck[j] == kekDeck[i] && !Used[j]) {
-               Used[i] = true;
-               Buttons[i].OnInteract();
+            if (better(Deck[j]) == Order[i].Trim() && !Used[j]) {
+               Used[j] = true;
+               Buttons[j].OnInteract();
                yield return new WaitForSeconds(.1f);
+               break;
             }
          }
       }
       yield return null;
-   }*/
+   }
 }
