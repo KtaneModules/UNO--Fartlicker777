@@ -138,14 +138,7 @@ public class UNO : MonoBehaviour {
                Audio.PlaySoundAtTransform("PlaceSound", Button.transform);
                whatYouPlayedLast = Deck[c];
                Debug.LogFormat("[UNO! #{0}] You played a {1}, which is not valid. Strike!", moduleId, better(whatYouPlayedLast));
-               cardsSubmitted = 0;
-               hasUnoed = false;
-               played.Clear();
-               Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
-               GetComponent<KMBombModule>().HandleStrike();
-               ResetCards();
-               GenerateCards();
-               ShowCards();
+               YouStruck();
             }
          }
       }
@@ -157,11 +150,8 @@ public class UNO : MonoBehaviour {
          return;
       }
       if (cardsSubmitted != 5 || hasUnoed) {
-         GetComponent<KMBombModule>().HandleStrike();
-         Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
-         GenerateCards();
-         ShowCards();
-         ResetCards();
+         Debug.LogFormat("[UNO! #{0}] UNO pressed at the wrong time. Strike!", moduleId);
+         YouStruck();
          return;
       }
       if (cardsSubmitted == 5) {
@@ -169,6 +159,17 @@ public class UNO : MonoBehaviour {
          Audio.PlaySoundAtTransform("UnoButtonPressSound", BigIfSquare.transform);
          hasUnoed = true;
       }
+   }
+
+   void YouStruck () {
+      GetComponent<KMBombModule>().HandleStrike();
+      Audio.PlaySoundAtTransform("WrongSound", BigIfSquare.transform);
+      cardsSubmitted = 0;
+      hasUnoed = false;
+      played.Clear();
+      GenerateCards();
+      ShowCards();
+      ResetCards();
    }
 
    void CardHover (KMSelectable Button) {
